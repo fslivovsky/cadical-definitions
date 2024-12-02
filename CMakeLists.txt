@@ -17,18 +17,19 @@ ExternalProject_Add(cadical
     BUILD_IN_SOURCE 1
 )
 
-set(ABC_USE_NAMESPACE abc)
-add_subdirectory(abc EXCLUDE_FROM_ALL)
+#set(ABC_USE_NAMESPACE abc)
+#add_subdirectory(abc EXCLUDE_FROM_ALL)
 # Remove any previous -fno-exceptions flag
-message(STATUS "CXXFLAGS: ${ABC_CXXFLAGS}")
-string(REPLACE "-fno-exceptions" "" ABC_CXXFLAGS "${ABC_CXXFLAGS}")
+#message(STATUS "CXXFLAGS: ${ABC_CXXFLAGS}")
+#string(REPLACE "-fno-exceptions" "" ABC_CXXFLAGS "${ABC_CXXFLAGS}")
 #target_compile_options(libabc-pic PRIVATE -fexceptions)
 
-# ExternalProject_Add(abc
-#     SOURCE_DIR ${CMAKE_SOURCE_DIR}/abc
-#     CMAKE_ARGS -DABC_NAMESPACE=abc -DABC_USE_PIC=1
-#     INSTALL_COMMAND ""
-# )
+ExternalProject_Add(abc
+    SOURCE_DIR ${CMAKE_SOURCE_DIR}/abc
+    CMAKE_ARGS -DABC_USE_NAMESPACE=abc
+    BUILD_COMMAND make libabc-pic
+    INSTALL_COMMAND ""
+)
 
 # Set the C++ Standard to C++20.
 set(CMAKE_CXX_STANDARD 20)

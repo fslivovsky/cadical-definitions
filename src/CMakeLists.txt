@@ -2,10 +2,20 @@ cmake_minimum_required(VERSION 3.10)
 
 add_library(interrupt interrupt.cpp interrupt.hpp)
 
+add_library(abc-pic STATIC IMPORTED)
+set_target_properties(abc-pic PROPERTIES
+    IMPORTED_LOCATION ${CMAKE_BINARY_DIR}/abc-prefix/src/abc-build/libabc-pic.a
+    INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_SOURCE_DIR}/abc/src/
+)
+
+find_library(READLINE_LIBRARY readline REQUIRED)
+
 add_library(definability_interpolator definability_interpolator.cpp definability_interpolator.hpp)
-target_include_directories(definability_interpolator PUBLIC ${CMAKE_SOURCE_DIR}/cadical/src/ ${CMAKE_SOURCE_DIR}/abc/src/)
-#add_dependencies(definability_interpolator abc)
-target_link_libraries(definability_interpolator PUBLIC libabc-pic)
+target_compile_definitions(definability_interpolator PUBLIC "ABC_NAMESPACE=abc" "LIN64" "SIZEOF_VOID_P=8" "SIZEOF_LONG=8" "SIZEOF_INT=4" "ABC_USE_CUDD=1" "ABC_USE_READLINE" "DABC_USE_PTHREADS")
+target_include_directories(definability_interpolator PUBLIC ${CMAKE_SOURCE_DIR}/cadical/src/)
+add_dependencies(definability_interpolator abc)
+#target_link_libraries(definability_interpolator PUBLIC libabc-pic)
+target_link_libraries(definability_interpolator PUBLIC abc-pic ${READLINE_LIBRARY})
 
 add_library(cadical_solver cadical_solver.cpp cadical_solver.hpp)
 target_include_directories(cadical_solver PUBLIC ${CMAKE_SOURCE_DIR}/cadical/src/)
