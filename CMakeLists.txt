@@ -11,18 +11,11 @@ endif()
 include(ExternalProject)
 ExternalProject_Add(cadical
     SOURCE_DIR ${CMAKE_SOURCE_DIR}/cadical
-    CONFIGURE_COMMAND ${CMAKE_SOURCE_DIR}/cadical/${CONFIGURE_COMMAND}
+    CONFIGURE_COMMAND CXXFLAGS=-fPIC ${CMAKE_SOURCE_DIR}/cadical/${CONFIGURE_COMMAND}
     BUILD_COMMAND make
     INSTALL_COMMAND ""
     BUILD_IN_SOURCE 1
 )
-
-#set(ABC_USE_NAMESPACE abc)
-#add_subdirectory(abc EXCLUDE_FROM_ALL)
-# Remove any previous -fno-exceptions flag
-#message(STATUS "CXXFLAGS: ${ABC_CXXFLAGS}")
-#string(REPLACE "-fno-exceptions" "" ABC_CXXFLAGS "${ABC_CXXFLAGS}")
-#target_compile_options(libabc-pic PRIVATE -fexceptions)
 
 ExternalProject_Add(abc
     SOURCE_DIR ${CMAKE_SOURCE_DIR}/abc
@@ -37,4 +30,4 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 add_subdirectory(src)
-#add_subdirectory(python)
+add_subdirectory(python)

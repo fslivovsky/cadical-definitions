@@ -1,6 +1,6 @@
 #include "definability_interpolator.hpp"
 
-#include <iostream>
+//#include <iostream>
 #include <algorithm>
 #include <cassert>
 #include <unordered_set>
@@ -70,9 +70,9 @@ std::pair<int, std::vector<std::vector<int>>> definability_interpolator::get_int
   Aig_ManCleanup(aig_man);
   // Rewrite AIG if necessary.
   if (abc::Aig_ManNodeNum(aig_man) > 0 && rewrite_aig) {
-    std::cout << "Number of nodes before: " << Aig_ManNodeNum(aig_man) << std::endl;
+    //std::cout << "Number of nodes before: " << Aig_ManNodeNum(aig_man) << std::endl;
     aig_man = Dar_ManRewriteDefault(aig_man);
-    std::cout << "Number of nodes after: " << Aig_ManNodeNum(aig_man) << std::endl;
+    //std::cout << "Number of nodes after: " << Aig_ManNodeNum(aig_man) << std::endl;
   }
   std::vector<std::vector<int>> interpolant_clauses;
   interpolant_clauses.reserve(Aig_ManNodeNum(aig_man));
