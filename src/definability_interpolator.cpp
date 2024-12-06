@@ -29,6 +29,13 @@ void definability_interpolator::add_original_clause(uint64_t id, bool redundant,
   }
   clause_id_to_clause[id] = clause;
   clause_id_to_proofnode[id] = std::make_shared<binary_proofnode>(!in_first_part);
+  // Print clause and antecedents.
+  // std::cout << "Adding clause " << id << std::endl;
+  // std::cout << "Clause: ";
+  // for (auto l: clause) {
+  //   std::cout << l << " ";
+  // }
+  // std::cout << std::endl;
 }
 
 void definability_interpolator::add_derived_clause(uint64_t id, bool redundant, const std::vector<int>& clause, const std::vector<uint64_t>& antecedents) {
@@ -41,6 +48,18 @@ void definability_interpolator::add_derived_clause(uint64_t id, bool redundant, 
       clause_id_to_derivation_node[id]->antecedents.push_back(clause_id_to_derivation_node.at(antecedent_id));
     }
   }
+  // Print clause and antecedents.
+  // std::cout << "Adding clause " << id << std::endl;
+  // std::cout << "Clause: ";
+  // for (auto l: clause) {
+  //   std::cout << l << " ";
+  // }
+  // std::cout << std::endl;
+  // std::cout << "Antecedents: ";
+  // for (auto antecedent_id: clause_id_to_antecedents[id]) {
+  //   std::cout << antecedent_id << " ";
+  // }
+  // std::cout << std::endl;
   //std::cout << "Adding clause " << id << std::endl;
   //std::cout << "Number of antecedents: " << antecedents.size() << std::endl;
 }
@@ -201,7 +220,13 @@ void definability_interpolator::create_derived_proofnode(uint64_t id) {
 
 void definability_interpolator::create_core_proofnodes() {
   auto core = get_core();
-  std::sort(core.begin(), core.end());
+  //std::sort(core.begin(), core.end());
+  // Print core
+  // std::cout << "Core: ";
+  // for (auto id: core) {
+  //   std::cout << id << " ";
+  // }
+  // std::cout << std::endl;
   // Create proofnodes for each clause in the core.
   for (auto it = core.begin(); it != core.end(); it++) {
     create_derived_proofnode(*it);
@@ -213,7 +238,9 @@ void definability_interpolator::process_node(const std::shared_ptr<binary_proofn
   assert(!proofnode_to_aig_node.contains(proofnode));
   if (proofnode->left == nullptr && proofnode->right == nullptr) {
     // Leaf node: constant 0 or 1.
-    proofnode_to_aig_node[proofnode] = proofnode->label ? abc::Aig_ManConst1(aig_man) : abc::Aig_ManConst1(aig_man);
+    auto new_node = proofnode->label ? abc::Aig_ManConst1(aig_man) : abc::Aig_ManConst0(aig_man);
+    proofnode_to_aig_node[proofnode] = new_node;
+    //abc::Aig_ObjPrint(aig_man, new_node);
   } else {
     // Both left and right nodes ought to be present.
     assert(proofnode->left && proofnode->right);
@@ -229,7 +256,11 @@ void definability_interpolator::process_node(const std::shared_ptr<binary_proofn
       }
       // Create an ITE node.
       auto variable_node = variable_to_ci.at(variable);
-      proofnode_to_aig_node[proofnode] = abc::Aig_Mux(aig_man, abc::Aig_NotCond(variable_node, proofnode->label > 0), left_node, right_node);
+      auto new_node = abc::Aig_Mux(aig_man, abc::Aig_NotCond(variable_node, proofnode->label > 0), left_node, right_node);
+      //abc::Aig_ObjPrint(aig_man, left_node);
+      //abc::Aig_ObjPrint(aig_man, right_node);
+      //abc::Aig_ObjPrint(aig_man, new_node);
+      proofnode_to_aig_node[proofnode] = new_node;
     } else if (first_part_variables_set.contains(variable)) {
       // If the variable is local to the first part, create an OR node.
       proofnode_to_aig_node[proofnode] = abc::Aig_Or(aig_man, left_node, right_node);
