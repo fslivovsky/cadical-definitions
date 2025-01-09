@@ -8,6 +8,8 @@ else()
     set(CONFIGURE_COMMAND configure)
 endif()
 
+find_package(Threads REQUIRED)
+
 include(ExternalProject)
 ExternalProject_Add(cadical
     SOURCE_DIR ${CMAKE_SOURCE_DIR}/cadical
