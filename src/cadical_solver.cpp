@@ -16,7 +16,7 @@ Cadical::Cadical(): tracer(nullptr) {
   solver.connect_terminator(&terminator);
 }
 
-Cadical::Cadical(CaDiCaL::Tracer* tracer) {
+Cadical::Cadical(CaDiCaL::Tracer* tracer): Cadical() {
   solver.set("inprocessing", false);
   this->tracer = tracer;
   solver.connect_proof_tracer(tracer, true);
