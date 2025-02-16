@@ -7,7 +7,7 @@ find_package(Threads REQUIRED)
 include(ExternalProject)
 
 ExternalProject_Add(abc
-    SOURCE_DIR ${CMAKE_SOURCE_DIR}/abc
+    SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/abc
     CMAKE_ARGS -DABC_USE_NAMESPACE=abc
     BUILD_COMMAND make libabc-pic
     INSTALL_COMMAND ""
