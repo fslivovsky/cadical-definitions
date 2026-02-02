@@ -27,7 +27,7 @@ add_library(definition_extractor definition_extractor.cpp definition_extractor.h
 target_link_libraries(definition_extractor PUBLIC definability_interpolator cadical_solver)
 
 add_executable(get_definitions main.cpp qdimacs.hpp)
-target_link_libraries(get_definitions definition_extractor Threads::Threads)
+target_link_libraries(get_definitions definition_extractor Threads::Threads CLI11::CLI11)
 target_include_directories(get_definitions PRIVATE ${CMAKE_SOURCE_DIR}/abc/src/)
 
 set_target_properties(get_definitions PROPERTIES
