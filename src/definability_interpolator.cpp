@@ -19,7 +19,7 @@ definability_interpolator::~definability_interpolator() {
   abc::Dar_LibStop();
 }
 
-void definability_interpolator::add_original_clause(uint64_t id, bool redundant, const std::vector<int>& clause, bool restored) {
+void definability_interpolator::add_original_clause(int64_t id, bool redundant, const std::vector<int>& clause, bool restored) {
   // If the clause contains the literal 1, then it belongs to the first part of the formula.
   bool in_first_part = std::find(clause.begin(), clause.end(), 1) != clause.end();
   if (in_first_part) {
@@ -38,7 +38,7 @@ void definability_interpolator::add_original_clause(uint64_t id, bool redundant,
   // std::cout << std::endl;
 }
 
-void definability_interpolator::add_derived_clause(uint64_t id, bool redundant, const std::vector<int>& clause, const std::vector<uint64_t>& antecedents) {
+void definability_interpolator::add_derived_clause(int64_t id, bool redundant, int witness, const std::vector<int>& clause, const std::vector<int64_t>& antecedents) {
   clause_id_to_clause[id] = clause;
   clause_id_to_antecedents[id] = antecedents;
   // Add an entry in the derivation node map.
@@ -64,16 +64,16 @@ void definability_interpolator::add_derived_clause(uint64_t id, bool redundant, 
   //std::cout << "Number of antecedents: " << antecedents.size() << std::endl;
 }
 
-void definability_interpolator::delete_clause (uint64_t id, bool redundant, const std::vector<int>& clause) {
+void definability_interpolator::delete_clause (int64_t id, bool redundant, const std::vector<int>& clause) {
   //std::cout << "Requesting deletion of clause " << id << std::endl;
   delete_ids.push_back(id);
 }
 
-void definability_interpolator::add_assumption_clause(uint64_t id, const std::vector<int>& clause, const std::vector<uint64_t>& antecedents) {
-  add_derived_clause(id, true, clause, antecedents);
+void definability_interpolator::add_assumption_clause(int64_t id, const std::vector<int>& clause, const std::vector<int64_t>& antecedents) {
+  add_derived_clause(id, true, 0, clause, antecedents);
 }
 
-void definability_interpolator::conclude_unsat(CaDiCaL::ConclusionType type, const std::vector<uint64_t>& clause_ids) {
+void definability_interpolator::conclude_unsat(CaDiCaL::ConclusionType type, const std::vector<int64_t>& clause_ids) {
   #ifndef NDEBUG
   assert(type != CaDiCaL::ConclusionType::CONSTRAINT && !clause_ids.empty() && clause_ids.size() == 1);
   #endif
@@ -146,13 +146,13 @@ std::pair<int, std::vector<std::vector<int>>> definability_interpolator::get_int
 }
 
 // Get the clause ids in the core of the proof that do not already have a proofnode.
-std::vector<uint64_t> definability_interpolator::get_core() const {
+std::vector<int64_t> definability_interpolator::get_core() const {
   #ifndef NDEBUG
   assert(empty_id != 0);
   #endif
-  std::vector<uint64_t> core;
-  std::vector<std::pair<uint64_t, int>> id_queue = {{empty_id, 0}};
-  std::unordered_set<uint64_t> done;
+  std::vector<int64_t> core;
+  std::vector<std::pair<int64_t, int>> id_queue = {{empty_id, 0}};
+  std::unordered_set<int64_t> done;
   while (!id_queue.empty()) {
     auto [id, antecedent_index]  = id_queue.back();
     id_queue.pop_back();
@@ -190,7 +190,7 @@ void definability_interpolator::unmark_all() {
   marking_history.clear();
 }
 
-void definability_interpolator::create_derived_proofnode(uint64_t id) {
+void definability_interpolator::create_derived_proofnode(int64_t id) {
   const auto& antecedents = clause_id_to_antecedents.at(id);
   // All antecedents must already have a proofnode.
   #ifndef NDEBUG
@@ -327,7 +327,7 @@ void definability_interpolator::delete_clauses() {
   delete_ids.clear();
 }
 
-void definability_interpolator::delete_clause(uint64_t id) {
+void definability_interpolator::delete_clause(int64_t id) {
   //std::cout << "Deleting clause " << id << std::endl;
   clause_id_to_antecedents.erase(id);
   clause_id_to_clause.erase(id);

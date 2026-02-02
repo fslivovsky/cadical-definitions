@@ -39,7 +39,7 @@ class definition_extractor {
   void original_clause(std::vector<int>& translated_clause);
 
   definability_interpolation::definability_interpolator interpolator;
-  definability_interpolation::Cadical solver;
+  cadical_interface::Cadical solver;
   
   std::vector<int> equality_selector;
   std::vector<int> last_shared_variables;

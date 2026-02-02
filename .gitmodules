@@ -7,3 +7,6 @@
 [submodule "CLI11"]
 	path = CLI11
 	url = https://github.com/CLIUtils/CLI11.git
+[submodule "cadical-interface"]
+	path = cadical-interface
+	url = git@github.com:fslivovsky/cadical-interface.git
