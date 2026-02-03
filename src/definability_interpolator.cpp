@@ -16,7 +16,40 @@ definability_interpolator::definability_interpolator(): empty_id(0) {
 }
 
 definability_interpolator::~definability_interpolator() {
+  clear_proofnodes();
   abc::Dar_LibStop();
+}
+
+void definability_interpolator::clear_proofnodes() {
+  // Iteratively collect all reachable proofnodes and detach their children
+  // to avoid stack overflow from recursive shared_ptr destruction.
+  std::vector<std::shared_ptr<binary_proofnode>> all_nodes;
+  std::unordered_set<binary_proofnode*> visited;
+  std::vector<std::shared_ptr<binary_proofnode>> stack;
+  for (auto& [id, node] : clause_id_to_proofnode) {
+    if (node && !visited.count(node.get())) {
+      stack.push_back(node);
+      visited.insert(node.get());
+    }
+  }
+  while (!stack.empty()) {
+    auto node = std::move(stack.back());
+    stack.pop_back();
+    if (node->left && !visited.count(node->left.get())) {
+      visited.insert(node->left.get());
+      stack.push_back(node->left);
+    }
+    if (node->right && !visited.count(node->right.get())) {
+      visited.insert(node->right.get());
+      stack.push_back(node->right);
+    }
+    all_nodes.push_back(std::move(node));
+  }
+  clause_id_to_proofnode.clear();
+  for (auto& node : all_nodes) {
+    node->left.reset();
+    node->right.reset();
+  }
 }
 
 void definability_interpolator::add_original_clause(int64_t id, bool redundant, const std::vector<int>& clause, bool restored) {

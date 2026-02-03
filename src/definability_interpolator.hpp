@@ -78,6 +78,7 @@ class definability_interpolator : public CaDiCaL::Tracer
   void create_core_proofnodes();
   void process_node(const std::shared_ptr<binary_proofnode>& proofnode, std::unordered_map<std::shared_ptr<binary_proofnode>, abc::Aig_Obj_t*>& proofnode_to_aig_node, std::unordered_map<int, abc::Aig_Obj_t*>& variable_to_ci, std::vector<int>& aig_input_variables, std::unordered_set<int>& shared_variables_set);
   std::vector<int> construct_aig(const std::vector<int>& shared_variables);
+  void clear_proofnodes();
   void delete_clause(int64_t id);
 
   int64_t empty_id;
