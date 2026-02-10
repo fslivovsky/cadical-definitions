@@ -129,6 +129,23 @@ int main(int argc, char** argv) {
 
           defined_existentials.insert(y);
           transitive_support[y] = t_support;
+
+          // Propagate: when y is newly defined, update transitive support
+          // of all variables that (transitively) depend on y.
+          std::vector<int> worklist = {y};
+          size_t widx = 0;
+          while (widx < worklist.size()) {
+            int z = worklist[widx++];
+            for (auto& [x, x_support] : transitive_support) {
+              if (x_support.count(z)) {
+                size_t before = x_support.size();
+                x_support.insert(transitive_support[z].begin(), transitive_support[z].end());
+                if (x_support.size() > before) {
+                  worklist.push_back(x);
+                }
+              }
+            }
+          }
         }
       }
     }
