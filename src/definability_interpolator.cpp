@@ -53,6 +53,10 @@ void definability_interpolator::clear_proofnodes() {
 }
 
 void definability_interpolator::add_original_clause(int64_t id, bool redundant, const std::vector<int>& clause, bool restored) {
+  if (restored) {
+    assert(clause_id_to_clause.contains(id));
+    return;
+  }
   // If the clause contains the literal 1, then it belongs to the first part of the formula.
   bool in_first_part = std::find(clause.begin(), clause.end(), 1) != clause.end();
   if (in_first_part) {
@@ -99,7 +103,9 @@ void definability_interpolator::add_derived_clause(int64_t id, bool redundant, i
 
 void definability_interpolator::delete_clause (int64_t id, bool redundant, const std::vector<int>& clause) {
   //std::cout << "Requesting deletion of clause " << id << std::endl;
-  delete_ids.push_back(id);
+  if (redundant) {
+    delete_ids.push_back(id);
+  }
 }
 
 void definability_interpolator::add_assumption_clause(int64_t id, const std::vector<int>& clause, const std::vector<int64_t>& antecedents) {
