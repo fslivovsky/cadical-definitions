@@ -2,9 +2,9 @@
 #include <vector>
 #include <string>
 #include <iomanip>
-#include <set>
 #include <unordered_map>
 #include <unordered_set>
+#include <algorithm>
 #include <cstdlib>
 
 #include "aig/aig/aig.h"
@@ -74,8 +74,9 @@ int main(int argc, char** argv) {
         else universal_vars.insert(variables[i]);
       }
 
-      std::unordered_set<int> defined_existentials;
-      std::unordered_map<int, std::set<int>> transitive_support;
+      // reverse_support[z] = vars whose direct support contains z.
+      std::unordered_map<int, std::vector<int>> reverse_support;
+      int num_variables_int = static_cast<int>(num_variables);
 
       for (int i = variables.size() - 1; i >= 0; i--) {
         displayProgress(static_cast<double>(variables.size() - i) / static_cast<double>(num_variables));
@@ -84,67 +85,54 @@ int main(int argc, char** argv) {
 
         nr_existential++;
 
-        // Build defining_variables for y:
-        // - All universal variables
-        // - Undefined existential variables (excluding y)
-        // - Defined existential x only if y is NOT in transitive_support[x]
+        // BFS from y through reverse_support to find all vars that transitively depend on y.
+        std::unordered_set<int> depends_on_y;
+        auto rev_it = reverse_support.find(y);
+        if (rev_it != reverse_support.end()) {
+          std::vector<int> queue(rev_it->second.begin(), rev_it->second.end());
+          depends_on_y.insert(queue.begin(), queue.end());
+          size_t idx = 0;
+          while (idx < queue.size()) {
+            int x = queue[idx++];
+            auto it = reverse_support.find(x);
+            if (it == reverse_support.end()) continue;
+            for (int w : it->second) {
+              if (depends_on_y.insert(w).second) {
+                queue.push_back(w);
+              }
+            }
+          }
+        }
+
         std::vector<int> defining_variables;
         for (auto u : universal_vars) {
           defining_variables.push_back(u);
         }
         for (auto e : existential_vars) {
           if (e == y) continue;
-          if (defined_existentials.count(e)) {
-            if (transitive_support[e].count(y) == 0) {
-              defining_variables.push_back(e);
-            }
-          } else {
-            defining_variables.push_back(e);
-          }
+          if (depends_on_y.count(e)) continue;
+          defining_variables.push_back(e);
         }
 
         if (extractor.has_definition(y, defining_variables, {})) {
           nr_defined++;
           auto [definition_clauses, aux_start] = extractor.get_definition(false);
 
-          // Compute direct support: defining variables appearing in the definition clauses.
-          std::set<int> defining_set(defining_variables.begin(), defining_variables.end());
-          std::set<int> direct_support;
+          // Compute direct support: problem variables (excluding y) appearing in the definition clauses.
+          std::vector<int> support;
           for (const auto& clause : definition_clauses) {
             for (int lit : clause) {
               int var = abs(lit);
-              if (var != y && defining_set.count(var)) {
-                direct_support.insert(var);
+              if (var != y && var <= num_variables_int) {
+                support.push_back(var);
               }
             }
           }
+          std::sort(support.begin(), support.end());
+          support.erase(std::unique(support.begin(), support.end()), support.end());
 
-          // Compute transitive support: direct_support ∪ transitive supports of defined vars in direct_support.
-          std::set<int> t_support = direct_support;
-          for (int z : direct_support) {
-            if (transitive_support.count(z)) {
-              t_support.insert(transitive_support[z].begin(), transitive_support[z].end());
-            }
-          }
-
-          defined_existentials.insert(y);
-          transitive_support[y] = t_support;
-
-          // Propagate: when y is newly defined, update transitive support
-          // of all variables that (transitively) depend on y.
-          std::vector<int> worklist = {y};
-          size_t widx = 0;
-          while (widx < worklist.size()) {
-            int z = worklist[widx++];
-            for (auto& [x, x_support] : transitive_support) {
-              if (x_support.count(z)) {
-                size_t before = x_support.size();
-                x_support.insert(transitive_support[z].begin(), transitive_support[z].end());
-                if (x_support.size() > before) {
-                  worklist.push_back(x);
-                }
-              }
-            }
+          for (int z : support) {
+            reverse_support[z].push_back(y);
           }
         }
       }

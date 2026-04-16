@@ -4,7 +4,7 @@
 
 namespace definability_interpolation {
 
-definition_extractor::definition_extractor() : state(State::UNDEFINED), interpolator(), solver(&interpolator) {}
+definition_extractor::definition_extractor() : state(State::UNDEFINED), interpolator(), solver(&interpolator, true) {}
 
 void definition_extractor::add_variable(int variable) {
   assert(variable > 0);
