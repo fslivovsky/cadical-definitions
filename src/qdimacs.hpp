@@ -10,15 +10,15 @@
 
 class FileDoesNotExistException: public std::exception {
  public:
-  FileDoesNotExistException(const std::string& filename): filename(filename) {}
+  FileDoesNotExistException(const std::string& filename)
+    : message("File does not exist: " + filename) {}
 
   const char* what() const noexcept override {
-    std::string message = "File does not exist: " + filename;
     return message.c_str();
   }
 
  private:
-  std::string filename;
+  std::string message;
 };
 
 auto parseQDIMACS(const std::string& filename) {
