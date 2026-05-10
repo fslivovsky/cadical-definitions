@@ -17,6 +17,10 @@
 #include "qdimacs.hpp"
 #include "definition_extractor.hpp"
 
+using namespace abc; // Needed for ABC iteration macros.
+
+using definability_interpolation::AigWithInputs;
+
 void displayProgress(double progress) {
   int barWidth = 70;
 
@@ -61,6 +65,11 @@ int main(int argc, char** argv) {
 
     size_t total_definition_clauses = 0;
 
+    // Under --basic --strict: collect per-variable AIGs in defined order
+    // (insertion order is a valid topological order because we only add
+    // variables to the support after they have been shown to be definable).
+    std::vector<std::pair<int, AigWithInputs>> defined_aigs;
+
     if (basic) {
       // Original forward-order strategy: iterate variables in QDIMACS order,
       // accumulating defining variables as we go.
@@ -74,12 +83,18 @@ int main(int argc, char** argv) {
           if (extractor.has_definition(v, defining_variables, {})) {
             nr_defined++;
             defined = true;
-            auto [def_clauses, aux_start] = extractor.get_definition(false);
-            total_definition_clauses += def_clauses.size();
-            if (write_definitions) {
-              all_definition_clauses.insert(all_definition_clauses.end(),
-                std::make_move_iterator(def_clauses.begin()),
-                std::make_move_iterator(def_clauses.end()));
+            if (strict) {
+              // AIG path: don't compute clauses.
+              AigWithInputs aig = extractor.get_definition_aig(false);
+              defined_aigs.emplace_back(v, std::move(aig));
+            } else {
+              auto [def_clauses, aux_start] = extractor.get_definition(false);
+              total_definition_clauses += def_clauses.size();
+              if (write_definitions) {
+                all_definition_clauses.insert(all_definition_clauses.end(),
+                  std::make_move_iterator(def_clauses.begin()),
+                  std::make_move_iterator(def_clauses.end()));
+              }
             }
           }
         }
@@ -169,9 +184,177 @@ int main(int argc, char** argv) {
 
     std::cout << std::endl;
     std::cout << "Number of defined existential variables: " << nr_defined << "/" << nr_existential << std::endl;
-    std::cout << "Total number of definition clauses: " << total_definition_clauses << std::endl;
+    if (!(basic && strict)) {
+      std::cout << "Total number of definition clauses: " << total_definition_clauses << std::endl;
+    }
 
-    if (write_definitions) {
+    if (basic && strict) {
+      // Build a joint AIG with universals AND defined existentials as CIs,
+      // and one CO per defined existential giving its definition cone. This
+      // allows sharing across definitions: if multiple defs reference y_1 or
+      // share sub-circuits, those parts appear once in the joint AIG.
+      Aig_Man_t* joint = Aig_ManStart(0);
+      std::unordered_map<int, Aig_Obj_t*> joint_var_to_ci;
+      std::unordered_map<int, Aig_Obj_t*> joint_def_node;
+      std::vector<int> def_order;
+
+      auto get_or_create_joint_ci = [&](int var) -> Aig_Obj_t* {
+        auto it = joint_var_to_ci.find(var);
+        if (it != joint_var_to_ci.end()) return it->second;
+        Aig_Obj_t* ci = Aig_ObjCreateCi(joint);
+        joint_var_to_ci[var] = ci;
+        return ci;
+      };
+
+      for (auto& [y, aig] : defined_aigs) {
+        if (!aig.aig_man) continue;
+        def_order.push_back(y);
+
+        Aig_ManCleanData(aig.aig_man);
+        Aig_ManConst1(aig.aig_man)->pData = Aig_ManConst1(joint);
+
+        Aig_Obj_t* pObj;
+        int i;
+        Aig_ManForEachCi(aig.aig_man, pObj, i) {
+          int input_var = aig.input_variables[i];
+          pObj->pData = get_or_create_joint_ci(input_var);
+        }
+
+        Aig_Obj_t* co = Aig_ManCo(aig.aig_man, 0);
+        Aig_Obj_t* root = Aig_ObjFanin0(co);
+        Aig_ManDupSimpleDfs_rec(joint, aig.aig_man, root);
+        Aig_Obj_t* def_node = Aig_NotCond((Aig_Obj_t*)root->pData, Aig_ObjFaninC0(co));
+        joint_def_node[y] = def_node;
+        Aig_ObjCreateCo(joint, def_node);
+
+        // Add a CI for y so subsequent defs that reference y go through this
+        // shared CI; substituted with def_node at the end.
+        if (!joint_var_to_ci.count(y)) {
+          joint_var_to_ci[y] = Aig_ObjCreateCi(joint);
+        }
+      }
+
+      int joint_ci = Aig_ManCiNum(joint);
+      int joint_co = Aig_ManCoNum(joint);
+      int joint_and = Aig_ManNodeNum(joint);
+      std::cout << "Joint AIG (with y-inputs): " << joint_ci << " inputs, "
+                << joint_co << " outputs, " << joint_and << " AND gates" << std::endl;
+
+      // Substitute y-CIs in the joint AIG with their corresponding def cones
+      // to produce the final AIG (universal-only inputs). pData memoization
+      // on `joint` ensures shared sub-circuits are imported once.
+      std::unordered_set<int> universal_set;
+      for (int i = 0; i < (int)variables.size(); i++) {
+        if (!is_existential[i]) universal_set.insert(variables[i]);
+      }
+      std::vector<int> ordered_universals;
+      for (int i = 0; i < (int)variables.size(); i++) {
+        int v = variables[i];
+        if (universal_set.count(v) && joint_var_to_ci.count(v)) {
+          ordered_universals.push_back(v);
+        }
+      }
+
+      Aig_Man_t* final_aig = Aig_ManStart(ordered_universals.size());
+      std::unordered_map<int, Aig_Obj_t*> universal_to_final_ci;
+      for (int u : ordered_universals) {
+        universal_to_final_ci[u] = Aig_ObjCreateCi(final_aig);
+      }
+
+      Aig_ManCleanData(joint);
+      Aig_ManConst1(joint)->pData = Aig_ManConst1(final_aig);
+      for (int u : ordered_universals) {
+        joint_var_to_ci[u]->pData = universal_to_final_ci[u];
+      }
+
+      std::unordered_map<int, Aig_Obj_t*> final_def_node;
+      for (int y : def_order) {
+        Aig_Obj_t* joint_def = joint_def_node[y];
+        Aig_Obj_t* joint_root = Aig_Regular(joint_def);
+        Aig_ManDupSimpleDfs_rec(final_aig, joint, joint_root);
+        Aig_Obj_t* final_def = Aig_NotCond((Aig_Obj_t*)joint_root->pData, Aig_IsComplement(joint_def));
+        final_def_node[y] = final_def;
+        // Set y-CI pData so later y_k that depend on y use the substituted cone.
+        if (joint_var_to_ci.count(y)) {
+          joint_var_to_ci[y]->pData = final_def;
+        }
+      }
+
+      std::vector<int> output_order;
+      for (int i = 0; i < (int)variables.size(); i++) {
+        int v = variables[i];
+        if (final_def_node.count(v)) output_order.push_back(v);
+      }
+      for (int v : output_order) {
+        Aig_ObjCreateCo(final_aig, final_def_node[v]);
+      }
+      Aig_ManCleanup(final_aig);
+
+      int num_ci = Aig_ManCiNum(final_aig);
+      int num_co = Aig_ManCoNum(final_aig);
+      int num_and = Aig_ManNodeNum(final_aig);
+      std::cout << "Combined definition AIG: " << num_ci << " inputs, "
+                << num_co << " outputs, " << num_and << " AND gates" << std::endl;
+
+      if (write_definitions) {
+        Vec_Ptr_t* vNodes = Aig_ManDfs(final_aig, 1);
+
+        unsigned next_var = 1;
+        Aig_Obj_t* pObj;
+        int i;
+        Aig_ManForEachCi(final_aig, pObj, i) {
+          pObj->iData = next_var++;
+        }
+        Vec_PtrForEachEntry(Aig_Obj_t*, vNodes, pObj, i) {
+          pObj->iData = next_var++;
+        }
+        Aig_ManConst1(final_aig)->iData = 0;
+        unsigned max_var = next_var - 1;
+
+        auto obj_to_lit = [&](Aig_Obj_t* obj, bool compl_edge) -> unsigned {
+          if (Aig_ObjIsConst1(obj))
+            return compl_edge ? 0u : 1u;
+          return 2 * (unsigned)obj->iData + (compl_edge ? 1u : 0u);
+        };
+
+        std::ofstream out(write_definitions_path);
+        if (!out) {
+          std::cerr << "Error: could not open " << write_definitions_path << " for writing" << std::endl;
+          Vec_PtrFree(vNodes);
+          Aig_ManStop(final_aig);
+          Aig_ManStop(joint);
+          return 1;
+        }
+
+        out << "aag " << max_var << " " << num_ci << " 0 " << num_co << " " << num_and << "\n";
+        Aig_ManForEachCi(final_aig, pObj, i) {
+          out << 2 * (unsigned)pObj->iData << "\n";
+        }
+        Aig_ManForEachCo(final_aig, pObj, i) {
+          out << obj_to_lit(Aig_ObjFanin0(pObj), Aig_ObjFaninC0(pObj)) << "\n";
+        }
+        Vec_PtrForEachEntry(Aig_Obj_t*, vNodes, pObj, i) {
+          unsigned lhs = 2 * (unsigned)pObj->iData;
+          unsigned rhs0 = obj_to_lit(Aig_ObjFanin0(pObj), Aig_ObjFaninC0(pObj));
+          unsigned rhs1 = obj_to_lit(Aig_ObjFanin1(pObj), Aig_ObjFaninC1(pObj));
+          out << lhs << " " << rhs0 << " " << rhs1 << "\n";
+        }
+        {
+          int idx = 0;
+          for (int v : ordered_universals) out << "i" << idx++ << " x" << v << "\n";
+        }
+        {
+          int idx = 0;
+          for (int v : output_order) out << "o" << idx++ << " y" << v << "\n";
+        }
+
+        Vec_PtrFree(vNodes);
+        std::cout << "Wrote AIGER file: " << write_definitions_path << std::endl;
+      }
+
+      Aig_ManStop(final_aig);
+      Aig_ManStop(joint);
+    } else if (write_definitions) {
       int max_var = 0;
       for (const auto& cl : all_definition_clauses) {
         for (int lit : cl) {

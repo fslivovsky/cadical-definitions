@@ -119,7 +119,7 @@ void definability_interpolator::conclude_unsat(CaDiCaL::ConclusionType type, con
   empty_id = clause_ids[0];
 }
 
-std::pair<int, std::vector<std::vector<int>>> definability_interpolator::get_interpolant_clauses(const std::vector<int>& shared_variables, int auxiliary_variable_start, bool rewrite_aig) {
+std::pair<int, std::vector<std::vector<int>>> definability_interpolator::get_interpolant_clauses(const std::vector<int>& shared_variables, int auxiliary_variable_start, bool rewrite_aig, AigWithInputs* aig_out, bool skip_clauses) {
   auto output_variable = auxiliary_variable_start;
   create_core_proofnodes();
   auto rootnode = clause_id_to_proofnode.at(empty_id);
@@ -128,59 +128,66 @@ std::pair<int, std::vector<std::vector<int>>> definability_interpolator::get_int
   Aig_ManCleanup(aig_man);
   // Rewrite AIG if necessary.
   if (abc::Aig_ManNodeNum(aig_man) > 0 && rewrite_aig) {
-    //std::cout << "Number of nodes before: " << Aig_ManNodeNum(aig_man) << std::endl;
     aig_man = Dar_ManRewriteDefault(aig_man);
-    //std::cout << "Number of nodes after: " << Aig_ManNodeNum(aig_man) << std::endl;
   }
+
   std::vector<std::vector<int>> interpolant_clauses;
-  interpolant_clauses.reserve(Aig_ManNodeNum(aig_man));
-  abc::Vec_Ptr_t * vNodes;
-  abc::Aig_Obj_t * pObj, * pConst1 = NULL;
-  int i;
-  assert(abc::Aig_ManCoNum(aig_man) == 1);
-  // check if constant is used
-  Aig_ManForEachCo( aig_man, pObj, i) {
-    if (abc::Aig_ObjIsConst1(abc::Aig_ObjFanin0(pObj)))
-      pConst1 = abc::Aig_ManConst1(aig_man);
+  if (!skip_clauses) {
+    interpolant_clauses.reserve(Aig_ManNodeNum(aig_man));
+    abc::Vec_Ptr_t * vNodes;
+    abc::Aig_Obj_t * pObj, * pConst1 = NULL;
+    int i;
+    assert(abc::Aig_ManCoNum(aig_man) == 1);
+    // check if constant is used
+    Aig_ManForEachCo( aig_man, pObj, i) {
+      if (abc::Aig_ObjIsConst1(abc::Aig_ObjFanin0(pObj)))
+        pConst1 = abc::Aig_ManConst1(aig_man);
+    }
+    // Assign shared variables to CIs.
+    Aig_ManForEachCi( aig_man, pObj, i) {
+      pObj->iData = aig_input_variables[i];
+    }
+    // collect nodes in the DFS order
+    vNodes = abc::Aig_ManDfs(aig_man, 1);
+    // assign IDs to objects
+    Aig_ManForEachCo( aig_man, pObj, i ) {
+      pObj->iData = auxiliary_variable_start++;
+    }
+    abc::Aig_ManConst1(aig_man)->iData = auxiliary_variable_start++;
+    Vec_PtrForEachEntry( abc::Aig_Obj_t *, vNodes, pObj, i ) {
+      pObj->iData = auxiliary_variable_start++;
+    }
+    // Add clauses from Tseitin conversion.
+    if (pConst1) { // Constant 1 if necessary.
+      interpolant_clauses.push_back( { pConst1->iData } );
+    }
+    Vec_PtrForEachEntry( abc::Aig_Obj_t *, vNodes, pObj, i ) {
+      auto variable_output = pObj->iData;
+      auto variable_input0 = abc::Aig_ObjFanin0(pObj)->iData;
+      auto variable_input1 = abc::Aig_ObjFanin1(pObj)->iData;
+      auto literal_input0 = Aig_ObjFaninC0(pObj) ? -variable_input0 : variable_input0;
+      auto literal_input1 = Aig_ObjFaninC1(pObj) ? -variable_input1 : variable_input1;
+      interpolant_clauses.push_back( { literal_input0, -variable_output } );
+      interpolant_clauses.push_back( { literal_input1, -variable_output } );
+      interpolant_clauses.push_back( { -literal_input0, -literal_input1, variable_output } );
+    }
+    // Write clauses for PO.
+    Aig_ManForEachCo( aig_man, pObj, i ) {
+      auto variable_output = pObj->iData;
+      auto variable_input0 = abc::Aig_ObjFanin0(pObj)->iData;
+      auto literal_input0 = Aig_ObjFaninC0(pObj) ? -variable_input0 : variable_input0;
+      interpolant_clauses.push_back( { literal_input0, -variable_output } );
+      interpolant_clauses.push_back( { -literal_input0, variable_output } );
+    }
+    abc::Vec_PtrFree(vNodes);
   }
-  // Assign shared variables to CIs.
-  Aig_ManForEachCi( aig_man, pObj, i) {
-    pObj->iData = aig_input_variables[i];
+
+  // If AIG output is requested, transfer ownership; otherwise destroy.
+  if (aig_out) {
+    *aig_out = AigWithInputs(aig_man, aig_input_variables);
+  } else {
+    abc::Aig_ManStop(aig_man);
   }
-  // collect nodes in the DFS order
-  vNodes = abc::Aig_ManDfs(aig_man, 1);
-  // assign IDs to objects
-  Aig_ManForEachCo( aig_man, pObj, i ) {
-    pObj->iData = auxiliary_variable_start++;
-  }
-  abc::Aig_ManConst1(aig_man)->iData = auxiliary_variable_start++;
-  Vec_PtrForEachEntry( abc::Aig_Obj_t *, vNodes, pObj, i ) {
-    pObj->iData = auxiliary_variable_start++;
-  }
-  // Add clauses from Tseitin conversion.
-  if (pConst1) { // Constant 1 if necessary.
-    interpolant_clauses.push_back( { pConst1->iData } );
-  }
-  Vec_PtrForEachEntry( abc::Aig_Obj_t *, vNodes, pObj, i ) {
-    auto variable_output = pObj->iData;
-    auto variable_input0 = abc::Aig_ObjFanin0(pObj)->iData;
-    auto variable_input1 = abc::Aig_ObjFanin1(pObj)->iData;
-    auto literal_input0 = Aig_ObjFaninC0(pObj) ? -variable_input0 : variable_input0;
-    auto literal_input1 = Aig_ObjFaninC1(pObj) ? -variable_input1 : variable_input1;
-    interpolant_clauses.push_back( { literal_input0, -variable_output } );
-    interpolant_clauses.push_back( { literal_input1, -variable_output } );
-    interpolant_clauses.push_back( { -literal_input0, -literal_input1, variable_output } );
-  }
-  // Write clauses for PO.
-  Aig_ManForEachCo( aig_man, pObj, i ) {
-    auto variable_output = pObj->iData;
-    auto variable_input0 = abc::Aig_ObjFanin0(pObj)->iData;
-    auto literal_input0 = Aig_ObjFaninC0(pObj) ? -variable_input0 : variable_input0;
-    interpolant_clauses.push_back( { literal_input0, -variable_output } );
-    interpolant_clauses.push_back( { -literal_input0, variable_output } );
-  }
-  abc::Vec_PtrFree(vNodes);
-  abc::Aig_ManStop(aig_man);
   return std::make_pair(output_variable, interpolant_clauses);
 }
 

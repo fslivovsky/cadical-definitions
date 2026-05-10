@@ -113,5 +113,20 @@ std::pair<std::vector<std::vector<int>>, int> definition_extractor::get_definiti
   return std::make_pair(definition, 3 * equality_selector.size());
 }
 
+AigWithInputs definition_extractor::get_definition_aig(bool rewrite) {
+  if (state != State::DEFINED) {
+    throw UndefinedException();
+  }
+  state = State::UNDEFINED;
+  AigWithInputs aig;
+  interpolator.get_interpolant_clauses(translate_clause(last_shared_variables, true), 3 * equality_selector.size(), rewrite, &aig, /*skip_clauses=*/true);
+  interpolator.delete_clauses();
+  // Map AIG input variables back to original space (translated 3*v+k -> v).
+  for (auto& v : aig.input_variables) {
+    v = v / 3;
+  }
+  return aig;
+}
+
 } // namespace definability_interpolation
 

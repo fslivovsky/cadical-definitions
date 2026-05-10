@@ -24,6 +24,10 @@ class definition_extractor {
   void append_formula(const std::vector<std::vector<int>>& formula);
   bool has_definition(int variable, const std::vector<int>& shared_variables, const std::vector<int>& assumptions);
   std::pair<std::vector<std::vector<int>>, int> get_definition(bool rewrite);
+  // Returns the AIG representing the definition (output of the AIG = value of the defined variable).
+  // Input variables in the returned AIG are mapped back to original variable IDs.
+  // Does not compute clauses.
+  AigWithInputs get_definition_aig(bool rewrite);
 
  protected:
   enum class State {

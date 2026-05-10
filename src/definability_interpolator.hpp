@@ -15,6 +15,34 @@
 
 namespace definability_interpolation {
 
+// Stores an AIG (Aig_Man_t*) along with the mapping from CI indices to
+// original problem variable IDs.
+struct AigWithInputs {
+  abc::Aig_Man_t* aig_man = nullptr;
+  std::vector<int> input_variables; // original variable IDs, one per CI
+
+  AigWithInputs() = default;
+  AigWithInputs(abc::Aig_Man_t* man, std::vector<int> inputs)
+      : aig_man(man), input_variables(std::move(inputs)) {}
+  ~AigWithInputs() { if (aig_man) abc::Aig_ManStop(aig_man); }
+
+  // Move-only.
+  AigWithInputs(AigWithInputs&& o) noexcept
+      : aig_man(o.aig_man), input_variables(std::move(o.input_variables))
+  { o.aig_man = nullptr; }
+  AigWithInputs& operator=(AigWithInputs&& o) noexcept {
+    if (this != &o) {
+      if (aig_man) abc::Aig_ManStop(aig_man);
+      aig_man = o.aig_man;
+      input_variables = std::move(o.input_variables);
+      o.aig_man = nullptr;
+    }
+    return *this;
+  }
+  AigWithInputs(const AigWithInputs&) = delete;
+  AigWithInputs& operator=(const AigWithInputs&) = delete;
+};
+
 class definability_interpolator : public CaDiCaL::Tracer
 {
  public:
@@ -40,7 +68,7 @@ class definability_interpolator : public CaDiCaL::Tracer
   // or return a trivial interpolant if the formula for the definability check itself is unsatisfiable.
   void conclude_unsat(CaDiCaL::ConclusionType type, const std::vector<int64_t>& clause_ids) override;
 
-  std::pair<int, std::vector<std::vector<int>>> get_interpolant_clauses(const std::vector<int>& shared_variables, int auxiliary_variable_start, bool rewrite_aig);
+  std::pair<int, std::vector<std::vector<int>>> get_interpolant_clauses(const std::vector<int>& shared_variables, int auxiliary_variable_start, bool rewrite_aig, AigWithInputs* aig_out = nullptr, bool skip_clauses = false);
 
   void delete_clauses();
 
