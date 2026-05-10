@@ -1,4 +1,5 @@
 #include <iostream>
+#include <fstream>
 #include <vector>
 #include <string>
 #include <iomanip>
@@ -39,7 +40,15 @@ int main(int argc, char** argv) {
   bool basic = false;
   app.add_flag("--basic", basic, "Use basic forward-order strategy");
 
+  bool strict = false;
+  app.add_flag("--strict", strict, "With --basic: only add an existential to the support if it was defined (transitively) by the universal variables");
+
+  std::string write_definitions_path;
+  app.add_option("--write-definitions", write_definitions_path, "Write all definition clauses to a DIMACS file at the given path");
+
   CLI11_PARSE(app, argc, argv);
+
+  bool write_definitions = !write_definitions_path.empty();
 
   try {
     auto [num_variables, variables, is_existential, clauses] = parseQDIMACS(filename);
@@ -48,6 +57,9 @@ int main(int argc, char** argv) {
     extractor.append_formula(clauses);
     int nr_defined = 0;
     int nr_existential = 0;
+    std::vector<std::vector<int>> all_definition_clauses;
+
+    size_t total_definition_clauses = 0;
 
     if (basic) {
       // Original forward-order strategy: iterate variables in QDIMACS order,
@@ -56,14 +68,24 @@ int main(int argc, char** argv) {
       for (int i = 0; i < variables.size(); i++) {
         displayProgress(static_cast<double>(i + 1) / static_cast<double>(num_variables));
         auto v = variables[i];
+        bool defined = false;
         if (is_existential[i]) {
           nr_existential++;
           if (extractor.has_definition(v, defining_variables, {})) {
             nr_defined++;
-            extractor.get_definition(false);
+            defined = true;
+            auto [def_clauses, aux_start] = extractor.get_definition(false);
+            total_definition_clauses += def_clauses.size();
+            if (write_definitions) {
+              all_definition_clauses.insert(all_definition_clauses.end(),
+                std::make_move_iterator(def_clauses.begin()),
+                std::make_move_iterator(def_clauses.end()));
+            }
           }
         }
-        defining_variables.push_back(v);
+        if (!is_existential[i] || !strict || defined) {
+          defining_variables.push_back(v);
+        }
       }
     } else {
       // Reverse-order strategy with transitive support checking.
@@ -117,6 +139,7 @@ int main(int argc, char** argv) {
         if (extractor.has_definition(y, defining_variables, {})) {
           nr_defined++;
           auto [definition_clauses, aux_start] = extractor.get_definition(false);
+          total_definition_clauses += definition_clauses.size();
 
           // Compute direct support: problem variables (excluding y) appearing in the definition clauses.
           std::vector<int> support;
@@ -134,12 +157,39 @@ int main(int argc, char** argv) {
           for (int z : support) {
             reverse_support[z].push_back(y);
           }
+
+          if (write_definitions) {
+            all_definition_clauses.insert(all_definition_clauses.end(),
+              std::make_move_iterator(definition_clauses.begin()),
+              std::make_move_iterator(definition_clauses.end()));
+          }
         }
       }
     }
 
     std::cout << std::endl;
     std::cout << "Number of defined existential variables: " << nr_defined << "/" << nr_existential << std::endl;
+    std::cout << "Total number of definition clauses: " << total_definition_clauses << std::endl;
+
+    if (write_definitions) {
+      int max_var = 0;
+      for (const auto& cl : all_definition_clauses) {
+        for (int lit : cl) {
+          int v = std::abs(lit);
+          if (v > max_var) max_var = v;
+        }
+      }
+      std::ofstream out(write_definitions_path);
+      if (!out) {
+        std::cerr << "Error: could not open " << write_definitions_path << " for writing" << std::endl;
+        return 1;
+      }
+      out << "p cnf " << max_var << " " << all_definition_clauses.size() << "\n";
+      for (const auto& cl : all_definition_clauses) {
+        for (int lit : cl) out << lit << " ";
+        out << "0\n";
+      }
+    }
   }
   catch (FileDoesNotExistException& e) {
     std::cout << e.what() << std::endl;
