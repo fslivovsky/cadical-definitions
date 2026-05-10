@@ -7,6 +7,7 @@
 #include <unordered_set>
 #include <algorithm>
 #include <cstdlib>
+#include <stdexcept>
 
 #include "aig/aig/aig.h"
 #include "base/abc/abc.h"
@@ -46,12 +47,31 @@ int main(int argc, char** argv) {
   std::string write_definitions_path;
   app.add_option("--write-definitions", write_definitions_path, "Write all definition clauses to a DIMACS file at the given path");
 
+  std::string defined_variables_path;
+  app.add_option("--defined-variables", defined_variables_path, "File listing variables known to be defined (single line, 0-terminated). Only these variables are checked for definability.");
+
   CLI11_PARSE(app, argc, argv);
 
   bool write_definitions = !write_definitions_path.empty();
+  bool restrict_to_defined = !defined_variables_path.empty();
 
   try {
     auto [num_variables, variables, is_existential, clauses] = parseQDIMACS(filename);
+
+    std::unordered_set<int> defined_variables_set;
+    if (restrict_to_defined) {
+      std::ifstream defined_file(defined_variables_path);
+      if (!defined_file)
+        throw FileDoesNotExistException(defined_variables_path);
+      std::unordered_set<int> prefix_set(variables.begin(), variables.end());
+      int v;
+      while (defined_file >> v && v != 0) {
+        if (!prefix_set.count(v)) {
+          throw std::runtime_error("variable " + std::to_string(v) + " from " + defined_variables_path + " is not in the prefix");
+        }
+        defined_variables_set.insert(v);
+      }
+    }
 
     definability_interpolation::definition_extractor extractor;
     extractor.append_formula(clauses);
@@ -71,7 +91,8 @@ int main(int argc, char** argv) {
         bool defined = false;
         if (is_existential[i]) {
           nr_existential++;
-          if (extractor.has_definition(v, defining_variables, {})) {
+          bool eligible = !restrict_to_defined || defined_variables_set.count(v);
+          if (eligible && extractor.has_definition(v, defining_variables, {})) {
             nr_defined++;
             defined = true;
             auto [def_clauses, aux_start] = extractor.get_definition(false);
@@ -106,6 +127,8 @@ int main(int argc, char** argv) {
         if (!is_existential[i]) continue;
 
         nr_existential++;
+
+        if (restrict_to_defined && !defined_variables_set.count(y)) continue;
 
         // BFS from y through reverse_support to find all vars that transitively depend on y.
         std::unordered_set<int> depends_on_y;
@@ -193,6 +216,10 @@ int main(int argc, char** argv) {
   }
   catch (FileDoesNotExistException& e) {
     std::cout << e.what() << std::endl;
+    return 1;
+  }
+  catch (const std::exception& e) {
+    std::cerr << "Error: " << e.what() << std::endl;
     return 1;
   }
 
